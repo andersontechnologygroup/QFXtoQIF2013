@@ -1,15 +1,35 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace QFXtoQIF2013
 {
+    /// <summary>
+    /// Main form for the QFX to QIF converter application.
+    /// </summary>
     public partial class Form1 : Form
     {
+        private const string QfxFilter = "QFX files (*.qfx)|*.qfx";
+        private const string QifFilter = "QIF files (*.qif)|*.qif";
+        private const string SelectQfxTitle = "Select a QFX file";
+        private const string SaveQifTitle = "Save QIF file";
+        private const string ErrorTitle = "Error";
+        private const string SuccessTitle = "Success";
+        private const string MsgSelectFile = "Please select a QFX file to convert.";
+        private const string MsgEnterAccount = "Please enter an account name.";
+        private const string MsgFileNotFound = "QFX input file not found.";
+        private const string MsgConversionSuccessful = "Conversion successful!";
+        private const string StatusConverting = "Converting QFX to QIF...";
+        private const string StatusComplete = "Conversion complete.";
+        private const string StatusFailed = "Conversion failed.";
+        private const string StatusCancelled = "Conversion cancelled.";
+        private const string QifExtension = ".qif";
+
+        private CancellationTokenSource? _cancellationTokenSource;
+
         public Form1()
         {
             InitializeComponent();
@@ -17,8 +37,8 @@ namespace QFXtoQIF2013
 
         private void btnBrowse_Click(object sender, EventArgs e)
         {
-            openFileDialog.Filter = "QFX files (*.qfx)|*.qfx";
-            openFileDialog.Title = "Select a QFX file";
+            openFileDialog.Filter = QfxFilter;
+            openFileDialog.Title = SelectQfxTitle;
             openFileDialog.FileName = txtQFXFile.Text;
             openFileDialog.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             if (openFileDialog.ShowDialog() == DialogResult.OK)
@@ -29,159 +49,102 @@ namespace QFXtoQIF2013
 
         private async void btnConvert_Click(object sender, EventArgs e)
         {
-            string qfxFile = txtQFXFile.Text;
-            string accountName = txtAccountName.Text;
-
-            if (string.IsNullOrWhiteSpace(qfxFile))
-            {
-                MessageBox.Show("Please select a QFX file to convert.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!ValidateInputs(out string qfxFile, out string accountName))
                 return;
-            }
 
-            if (string.IsNullOrWhiteSpace(accountName))
-            {
-                MessageBox.Show("Please enter an account name.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = _cancellationTokenSource.Token;
 
-            if (!File.Exists(qfxFile))
-            {
-                MessageBox.Show("QFX input file not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            // Disable controls to prevent duplicate operations during async run
-            btnConvert.Enabled = false;
-            btnBrowse.Enabled = false;
-            lblDebugging.Text = "Converting QFX to QIF...";
-            txtDebugging.Clear();
-
-            // Progress reporting handler
-            var debugging = new Progress<string>(status =>
-            {
-                txtDebugging.AppendText(status + Environment.NewLine);
-            });
-
-            var progress = new Progress<string>(status =>
-            {
-                lblDebugging.Text = status;
-            });
+            SetUIBusy(true);
+            var debugging = CreateDebuggingProgress();
+            var progress = CreateStatusProgress();
 
             try
             {
-                // Run CPU/IO bound task on thread pool
-                string qifResult = await Task.Run(() => QfxToQifConverter.Convert(qfxFile, accountName, debugging, progress));
+                string qifResult = await Task.Run(() =>
+                    QfxToQifConverter.Convert(qfxFile, accountName, debugging, progress),
+                    cancellationToken);
 
                 if (!string.IsNullOrEmpty(qifResult))
                 {
-                    saveFileDialog.Filter = "QIF files (*.qif)|*.qif";
-                    saveFileDialog.Title = "Save QIF file";
-                    saveFileDialog.FileName = Path.GetFileNameWithoutExtension(qfxFile) + ".qif";
-                    saveFileDialog.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-                    if (saveFileDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        await Task.Run(() => File.WriteAllText(saveFileDialog.FileName, qifResult, Encoding.UTF8));
-                        MessageBox.Show("Conversion successful!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
+                    await SaveQifFileAsync(qifResult, qfxFile, cancellationToken);
                 }
-                lblDebugging.Text = "Conversion complete.";
+                lblDebugging.Text = StatusComplete;
+            }
+            catch (OperationCanceledException)
+            {
+                lblDebugging.Text = StatusCancelled;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"An error occurred during conversion: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                lblDebugging.Text = "Conversion failed.";
+                MessageBox.Show($"An error occurred during conversion: {ex.Message}",
+                    ErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                lblDebugging.Text = StatusFailed;
             }
             finally
             {
-                btnConvert.Enabled = true;
-                btnBrowse.Enabled = true;
+                SetUIBusy(false);
             }
         }
-    }
 
-    /// <summary>
-    /// Decoupled, reusable conversion engine
-    /// </summary>
-    public static class QfxToQifConverter
-    {
-        public static string Convert(string qfxFilePath, string accountName, IProgress<string> debugging, IProgress<string> progress)
+        private bool ValidateInputs(out string qfxFile, out string accountName)
         {
-            progress?.Report("Reading file...");
-            debugging?.Report("Reading file...");
-            string fileContent = File.ReadAllText(qfxFilePath, Encoding.UTF8);
-
-            // Extract all <STMTTRN>...</STMTTRN> blocks safely using Regex
-            var transactionMatches = Regex.Matches(fileContent, @"<STMTTRN>([\s\S]*?)</STMTTRN>", RegexOptions.IgnoreCase);
-            progress?.Report($"Found {transactionMatches.Count + 1} records in the QFX file.");
-            debugging?.Report($"Found {transactionMatches.Count + 1} records in the QFX file.");
-
-            StringBuilder qif = new StringBuilder();
-
-            // Build QIF Header
-            qif.AppendLine("!Option:AutoSwitch");
-            qif.AppendLine("!ACCOUNT");
-            qif.AppendLine("N" + accountName);
-            qif.AppendLine("TBank");
-            qif.AppendLine("^");
-            qif.AppendLine("!Clear:AutoSwitch");
-            qif.AppendLine("!ACCOUNT");
-            qif.AppendLine("N" + accountName);
-            qif.AppendLine("TBank");
-            qif.AppendLine("^");
-            qif.AppendLine("!Type:Bank");
-
-            debugging?.Report("Processing transactions...");
-
-            for(int index = 0; index < transactionMatches.Count; index++)
+            qfxFile = txtQFXFile.Text;
+            accountName = SanitizeAccountName(txtAccountName.Text);
+            if (string.IsNullOrWhiteSpace(qfxFile))
             {
-                var match = transactionMatches[index];
-
-                Thread.Sleep(1);
-                progress?.Report($"Processing transaction {index + 1} of {transactionMatches.Count + 1}...");
-
-                string transBody = match.Groups[1].Value;
-
-                // Extract fields within transaction safely using Regex
-                string dateVal = ExtractTagValue(transBody, "DTPOSTED");
-                string amountVal = ExtractTagValue(transBody, "TRNAMT");
-                string nameVal = ExtractTagValue(transBody, "NAME");
-
-                // Format & append date
-                if (!string.IsNullOrEmpty(dateVal) && dateVal.Length >= 8)
-                {
-                    string dateStr = dateVal.Substring(0, 8);
-                    if (DateTime.TryParseExact(dateStr, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime parsedDate))
-                    {
-                        qif.AppendLine("D" + parsedDate.ToString("MM/dd/yyyy"));
-                    }
-                }
-
-                // Format & append amount
-                if (!string.IsNullOrEmpty(amountVal))
-                {
-                    qif.AppendLine("T" + amountVal);
-                    qif.AppendLine("C*");
-                }
-
-                // Format & append payee
-                if (!string.IsNullOrEmpty(nameVal))
-                {
-                    qif.AppendLine("P" + nameVal);
-                }
-
-                // End of transaction entry in QIF
-                qif.AppendLine("^");
+                MessageBox.Show(MsgSelectFile, ErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
-
-            debugging?.Report("Conversion completed successfully.");
-            return qif.ToString();
+            if (string.IsNullOrWhiteSpace(accountName))
+            {
+                MessageBox.Show(MsgEnterAccount, ErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            if (!File.Exists(qfxFile))
+            {
+                MessageBox.Show(MsgFileNotFound, ErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            return true;
         }
 
-        private static string ExtractTagValue(string xml, string tagName)
+        private static string SanitizeAccountName(string name)
         {
-            // Matches the tag and captures all characters up to the next '<' (the next tag)
-            var match = Regex.Match(xml, $@"<{tagName}>([^<]+)", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
+            return name.Trim().Replace("\n", "").Replace("\r", "").Replace("^", "");
+        }
+
+        private void SetUIBusy(bool busy)
+        {
+            btnConvert.Enabled = !busy;
+            btnBrowse.Enabled = !busy;
+            lblDebugging.Text = busy ? StatusConverting : lblDebugging.Text;
+            txtDebugging.Clear();
+        }
+
+        private IProgress<string> CreateDebuggingProgress()
+        {
+            return new Progress<string>(status => txtDebugging.AppendText(status + Environment.NewLine));
+        }
+
+        private IProgress<string> CreateStatusProgress()
+        {
+            return new Progress<string>(status => lblDebugging.Text = status);
+        }
+
+        private async Task SaveQifFileAsync(string qifContent, string qfxFilePath, CancellationToken cancellationToken)
+        {
+            saveFileDialog.Filter = QifFilter;
+            saveFileDialog.Title = SaveQifTitle;
+            saveFileDialog.FileName = Path.GetFileNameWithoutExtension(qfxFilePath) + QifExtension;
+            saveFileDialog.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Run(() => File.WriteAllText(saveFileDialog.FileName, qifContent, Encoding.UTF8), cancellationToken);
+                MessageBox.Show(MsgConversionSuccessful, SuccessTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         }
     }
 }

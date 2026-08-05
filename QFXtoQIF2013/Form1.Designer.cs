@@ -36,7 +36,6 @@
             lblDebugging = new Label();
             txtDebugging = new TextBox();
             btnConvert = new Button();
-            lblStatus = new Label();
             openFileDialog = new OpenFileDialog();
             saveFileDialog = new SaveFileDialog();
             SuspendLayout();
@@ -97,7 +96,7 @@
             txtDebugging.Location = new Point(12, 128);
             txtDebugging.Multiline = true;
             txtDebugging.Name = "txtDebugging";
-            txtDebugging.ScrollBars = ScrollBars.Horizontal;
+            txtDebugging.ScrollBars = ScrollBars.Vertical;
             txtDebugging.Size = new Size(595, 131);
             txtDebugging.TabIndex = 6;
             // 
@@ -111,13 +110,7 @@
             btnConvert.UseVisualStyleBackColor = true;
             btnConvert.Click += btnConvert_Click;
             // 
-            // lblStatus
             // 
-            lblStatus.Location = new Point(12, 80);
-            lblStatus.Name = "lblStatus";
-            lblStatus.Size = new Size(495, 25);
-            lblStatus.TabIndex = 8;
-            lblStatus.Text = ".";
             // 
             // openFileDialog
             // 
@@ -132,7 +125,6 @@
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(622, 273);
-            Controls.Add(lblStatus);
             Controls.Add(btnConvert);
             Controls.Add(txtDebugging);
             Controls.Add(lblDebugging);
@@ -141,6 +133,7 @@
             Controls.Add(btnBrowse);
             Controls.Add(label1);
             Controls.Add(txtQFXFile);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = false;
             Name = "Form1";
@@ -159,7 +152,6 @@
         private Label lblDebugging;
         private TextBox txtDebugging;
         private Button btnConvert;
-        private Label lblStatus;
         private OpenFileDialog openFileDialog;
         private SaveFileDialog saveFileDialog;
     }

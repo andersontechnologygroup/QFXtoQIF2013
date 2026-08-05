@@ -11,6 +11,8 @@ import it.   Turns out it didn't import it because it didn't have the matching a
 header information and manually adding it, I had a solution.  I thought!   The online converter (and every other converter I found) limited the
 number of transaction unless you paid.   Again, didn't want to drop the money for a one time use.   And I'm a programmer.   So here is QFX to QIF.
 
+Testing is done with xUnit and Stryker.  The project is setup to run the tests and Stryker mutation testing on build.
+
 ---
 
 ## 🚀 Features
