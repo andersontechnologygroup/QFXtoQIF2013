@@ -6,8 +6,8 @@ Convert QFX file format to QIF file format with Account Name header
 
 In a pinch, I needed access to some older Quicken data for one task only.   I was able to download the data I needed in QFX format, 
 but I didn't want to spend the $100 for the Quicken license.  I found the Quicken 2013 was offered free of charge without the connected services.
-The QFX file format is, reasonable, considered a connected service.   I found a free QFX to QIF converter online, but it Quicken would not
-iimport it.   Turns out it didn't import it because it didn't have the matching account name information.   After figuring out the needed
+The QFX file format is, reasonably, considered a connected service.   I found a free QFX to QIF converter online, but Quicken 2013 would not
+import it.   Turns out it didn't import it because it didn't have the matching account name information.   After figuring out the needed
 header information and manually adding it, I had a solution.  I thought!   The online converter (and every other converter I found) limited the
 number of transaction unless you paid.   Again, didn't want to drop the money for a one time use.   And I'm a programmer.   So here is QFX to QIF.
 
